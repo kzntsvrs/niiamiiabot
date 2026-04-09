@@ -98,7 +98,7 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"Bot is alive and polling! 🟢")
+        self.wfile.write(b"Bot is alive and polling!")  # ✅ только ASCII
     def log_message(self, format, *args):
         pass
 
