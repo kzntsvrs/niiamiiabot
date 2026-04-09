@@ -6,8 +6,10 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 TOKEN = os.getenv("BOT_TOKEN")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+
 if not TOKEN:
-    print("❌ ОШИБКА: Переменная BOT_TOKEN не найдена. Проверь Environment Variables в Render.")
+    print("❌ ОШИБКА: Переменная BOT_TOKEN не найдена. Проверь Render Environment.")
     exit(1)
 
 bot = telebot.TeleBot(TOKEN)
@@ -29,6 +31,7 @@ RUSSIAN_FACTS = [
     "🎭 В России более 600 театров — больше, чем в любой другой стране."
 ]
 
+# --- ФУНКЦИИ КОНТЕНТА ---
 def get_random_meme():
     try:
         res = requests.get("https://meme-api.com/gimme", timeout=5)
@@ -49,6 +52,26 @@ def get_random_gif():
     except: pass
     return "https://media.giphy.com/media/Ju7l5y9osyymQ/giphy.gif", "Танцующий котик 💃"
 
+def get_weather(city):
+    if not WEATHER_API_KEY:
+        return "⚠️ Ключ погоды не настроен. Попроси админа добавить WEATHER_API_KEY."
+    
+    url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
+    try:
+        res = requests.get(url, timeout=7)
+        if res.status_code == 200:
+            d = res.json()
+            return (f"🌤 Погода в {d['name']}, {d['sys']['country']}\n"
+                    f"🌡 Температура: {d['main']['temp']}°C (ощущается как {d['main']['feels_like']}°C)\n"
+                    f"💨 Ветер: {d['wind']['speed']} м/с\n"
+                    f"☁️ {d['weather'][0]['description'].capitalize()}")
+        elif res.status_code == 404:
+            return f"🌍 Город '{city}' не найден. Попробуй написать на английском (например, Moscow)."
+        else:
+            return f"❌ Ошибка сервера погоды: {res.status_code}"
+    except Exception as e:
+        return f"😅 Не удалось загрузить погоду. Попробуй позже."
+
 # --- ОБРАБОТЧИКИ TELEGRAM ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -58,8 +81,9 @@ def send_welcome(message):
     btn_meme = telebot.types.InlineKeyboardButton("🖼 Мем", callback_data="send_meme")
     btn_gif = telebot.types.InlineKeyboardButton("🎬 Гифка", callback_data="send_gif")
     btn_fact = telebot.types.InlineKeyboardButton("🧠 Факт", callback_data="send_fact")
-    markup.add(btn_dice, btn_quote, btn_meme, btn_gif, btn_fact)
-    bot.reply_to(message, "👋 Привет! Я русскоязычный вайб-бот. Выбери действие:", reply_markup=markup)
+    btn_weather = telebot.types.InlineKeyboardButton("🌤 Погода", callback_data="ask_weather")
+    markup.add(btn_dice, btn_quote, btn_meme, btn_gif, btn_fact, btn_weather)
+    bot.reply_to(message, "👋 Привет! Я русскоязычный вайб-бот. Выбери действие или введи `/weather Город`:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
@@ -85,12 +109,27 @@ def handle_callback(call):
     elif call.data == "send_fact":
         bot.answer_callback_query(call.id, text="🧠 Загружаю факт...")
         bot.send_message(call.message.chat.id, random.choice(RUSSIAN_FACTS))
+    elif call.data == "ask_weather":
+        bot.answer_callback_query(call.id, text="🌤 Введи город текстом!")
+        bot.send_message(call.message.chat.id, "💬 Просто напиши мне название города, например: `Москва` или `Лондон`. Я покажу погоду!")
+
+@bot.message_handler(commands=['weather'])
+def cmd_weather(message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        bot.reply_to(message, "🌤 Введи город после команды.\nПример: `/weather Москва` или `/weather London`")
+        return
+    city = parts[1].strip()
+    bot.reply_to(message, f"🔍 Ищу погоду для {city}...")
+    result = get_weather(city)
+    bot.send_message(message.chat.id, result)
 
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
+    # Простой эхо-режим для текста
     bot.reply_to(message, f"🔁 Ты написал: {message.text}")
 
-# --- АНТИ-СОН ДЛЯ RENDER (ИСПРАВЛЕНО) ---
+# --- АНТИ-СОН ДЛЯ RENDER ---
 PORT = int(os.environ.get("PORT", 8080))
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
@@ -98,9 +137,8 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"Bot is alive and polling!")  # ✅ только ASCII
-    def log_message(self, format, *args):
-        pass
+        self.wfile.write(b"Bot is alive and polling!")
+    def log_message(self, format, *args): pass
 
 def run_server():
     try:
