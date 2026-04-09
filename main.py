@@ -6,6 +6,10 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    print("❌ ОШИБКА: Переменная BOT_TOKEN не найдена. Проверь Environment Variables в Render.")
+    exit(1)
+
 bot = telebot.TeleBot(TOKEN)
 
 # --- КОНТЕНТ ---
@@ -22,15 +26,9 @@ RUSSIAN_FACTS = [
     "🏔️ В России находится самое глубокое озеро в мире — Байкал (1642 метра).",
     "🚀 Россия первой отправила человека в космос — Юрия Гагарина 12 апреля 1961 года.",
     "👩🚀 Первая в мире женщина-космонавт — Валентина Терешкова (СССР, 1963).",
-    "🎭 В России более 600 театров — больше, чем в любой другой стране.",
-    "🐻 В России обитает около 150 000 бурых медведей — это половина всех медведей мира.",
-    "🌡️ Самая низкая температура в России: -71,2°C (Оймякон, Якутия).",
-    "🏰 В России 29 объектов Всемирного наследия ЮНЕСКО.",
-    "🎵 Пётр Ильич Чайковский — один из самых исполняемых композиторов в мире.",
-    "🔬 Дмитрий Менделеев создал периодическую систему химических элементов."
+    "🎭 В России более 600 театров — больше, чем в любой другой стране."
 ]
 
-# --- ФУНКЦИИ КОНТЕНТА ---
 def get_random_meme():
     try:
         res = requests.get("https://meme-api.com/gimme", timeout=5)
@@ -92,21 +90,27 @@ def handle_callback(call):
 def echo_all(message):
     bot.reply_to(message, f"🔁 Ты написал: {message.text}")
 
-# --- АНТИ-СОН ДЛЯ БЕСПЛАТНОГО ХОСТИНГА ---
+# --- АНТИ-СОН ДЛЯ RENDER (ИСПРАВЛЕНО) ---
+PORT = int(os.environ.get("PORT", 8080))
+
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"Bot is alive!")
-    def log_message(self, format, *args): pass
+        self.wfile.write(b"Bot is alive and polling! 🟢")
+    def log_message(self, format, *args):
+        pass
 
-def run_keepalive():
-    server = HTTPServer(('0.0.0.0', 8080), KeepAliveHandler)
-    server.serve_forever()
+def run_server():
+    try:
+        server = HTTPServer(('0.0.0.0', PORT), KeepAliveHandler)
+        print(f"✅ Веб-сервер запущен на порту {PORT}")
+        server.serve_forever()
+    except Exception as e:
+        print(f"❌ Сервер не запустился: {e}")
 
-# --- ЗАПУСК ---
 if __name__ == "__main__":
-    threading.Thread(target=run_keepalive, daemon=True).start()
-    print("✅ Бот запущен и работает 24/7...")
+    threading.Thread(target=run_server, daemon=True).start()
+    print("✅ Бот запущен. Ожидание сообщений...")
     bot.polling(none_stop=True)
