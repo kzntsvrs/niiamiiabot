@@ -75,29 +75,40 @@ def get_weather(city):
         return "😅 Не удалось загрузить погоду. Попробуй позже."
 
 def get_top_news():
-    """Парсит топ-3 новости из RSS-ленты Ленты.ру"""
-    rss_url = "https://lenta.ru/rss/news/main/"
-    try:
-        res = requests.get(rss_url, timeout=10)
-        res.raise_for_status()
-        
-        root = ET.fromstring(res.content)
-        items = root.findall('.//item')[:3]  # Берём первые 3 новости
-        
-        news_list = []
-        for i, item in enumerate(items, 1):
-            title = item.find('title').text or "Без заголовка"
-            link = item.find('link').text
-            desc = item.find('description').text or ""
+    """Надёжный парсер RSS с защитой от блокировок и пустых ответов"""
+    rss_urls = [
+        "https://lenta.ru/rss/news/main/",
+        "https://ria.ru/export/rss2/ru_all/index.xml"  # Фоллбэк
+    ]
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    
+    for rss_url in rss_urls:
+        try:
+            res = requests.get(rss_url, headers=headers, timeout=10)
+            res.raise_for_status()
             
-            # Убираем HTML-теги из описания
-            clean_desc = re.sub(r'<[^>]+>', '', desc).strip()[:150] + "..."
+            root = ET.fromstring(res.content)
+            # Ищем <item> игнорируя namespace
+            items = [el for el in root.iter() if el.tag.endswith('item')][:3]
             
-            news_list.append(f"{i}. 📰 {title}\n   {clean_desc}\n   🔗 {link}")
+            if not items:
+                continue  # Пробуем следующую ленту
+                
+            news_list = []
+            for i, item in enumerate(items, 1):
+                title = (item.find('title').text or "Без заголовка").strip()
+                link = item.find('link').text or "#"
+                desc_elem = item.find('description')
+                desc = desc_elem.text if desc_elem is not None else ""
+                clean_desc = re.sub(r'<[^>]+>', '', desc).strip()[:130] + ("..." if len(desc) > 130 else "")
+                
+                news_list.append(f"{i}. 📰 {title}\n   {clean_desc}\n   🔗 {link}")
+                
+            return "📡 ТОП-3 НОВОСТИ:\n\n" + "\n\n".join(news_list)
+        except Exception:
+            continue  # Если лента упала, пробуем следующую
             
-        return "📡 **ТОП-3 НОВОСТИ:**\n\n" + "\n\n".join(news_list)
-    except Exception as e:
-        return f"😅 Не удалось загрузить новости. Попробуй позже.\n(Тех. причина: {str(e)[:40]})"
+    return "😅 Не удалось загрузить новости. Попробуй позже или проверь интернет-соединение."
 
 # --- ОБРАБОТЧИКИ TELEGRAM ---
 @bot.message_handler(commands=['start'])
@@ -140,7 +151,7 @@ def handle_callback(call):
         bot.send_message(call.message.chat.id, random.choice(RUSSIAN_FACTS))
     elif call.data == "get_news":
         bot.answer_callback_query(call.id, text="📡 Загружаю новости...")
-        bot.send_message(call.message.chat.id, get_top_news(), parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, get_top_news())
     elif call.data == "ask_weather":
         bot.answer_callback_query(call.id, text="🌤 Введи город текстом!")
         bot.send_message(call.message.chat.id, "💬 Просто напиши мне название города, например: `Москва` или `Лондон`.")
@@ -158,7 +169,7 @@ def cmd_weather(message):
 @bot.message_handler(commands=['news'])
 def cmd_news(message):
     bot.reply_to(message, "📡 Загружаю свежие новости...")
-    bot.send_message(message.chat.id, get_top_news(), parse_mode="Markdown")
+    bot.send_message(message.chat.id, get_top_news())
 
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
