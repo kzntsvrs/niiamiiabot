@@ -75,40 +75,40 @@ def get_weather(city):
         return "😅 Не удалось загрузить погоду. Попробуй позже."
 
 def get_top_news():
-    """Надёжный парсер RSS с защитой от блокировок и пустых ответов"""
+    """Надёжный парсер через JSON-конвертер RSS (обходит блокировки и проблемы с XML)"""
     rss_urls = [
         "https://lenta.ru/rss/news/main/",
-        "https://ria.ru/export/rss2/ru_all/index.xml"  # Фоллбэк
+        "https://ria.ru/export/rss2/index.xml"
     ]
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-    
     for rss_url in rss_urls:
         try:
-            res = requests.get(rss_url, headers=headers, timeout=10)
+            # Конвертируем RSS в JSON через бесплатный сервис
+            api_url = f"https://api.rss2json.com/v1/api.json?rss_url={rss_url}"
+            res = requests.get(api_url, timeout=10)
             res.raise_for_status()
+            data = res.json()
             
-            root = ET.fromstring(res.content)
-            # Ищем <item> игнорируя namespace
-            items = [el for el in root.iter() if el.tag.endswith('item')][:3]
-            
-            if not items:
+            if data.get("status") != "ok" or not data.get("items"):
                 continue  # Пробуем следующую ленту
-                
+            
+            items = data["items"][:3]
             news_list = []
             for i, item in enumerate(items, 1):
-                title = (item.find('title').text or "Без заголовка").strip()
-                link = item.find('link').text or "#"
-                desc_elem = item.find('description')
-                desc = desc_elem.text if desc_elem is not None else ""
-                clean_desc = re.sub(r'<[^>]+>', '', desc).strip()[:130] + ("..." if len(desc) > 130 else "")
+                title = item.get("title", "Без заголовка").strip()
+                link = item.get("link", "#")
+                desc = item.get("description") or item.get("content") or ""
+                clean_desc = re.sub(r'<[^>]+>', '', desc).strip()[:130]
+                if len(desc) > 130: clean_desc += "..."
                 
                 news_list.append(f"{i}. 📰 {title}\n   {clean_desc}\n   🔗 {link}")
-                
-            return "📡 ТОП-3 НОВОСТИ:\n\n" + "\n\n".join(news_list)
-        except Exception:
-            continue  # Если лента упала, пробуем следующую
             
-    return "😅 Не удалось загрузить новости. Попробуй позже или проверь интернет-соединение."
+            return "📡 ТОП-3 НОВОСТИ:\n\n" + "\n\n".join(news_list)
+        except Exception as e:
+            # Логируем ошибку в Render для отладки
+            print(f"[NEWS DEBUG] Ошибка ленты {rss_url}: {type(e).__name__} - {e}")
+            continue
+            
+    return "😅 Не удалось загрузить новости. Попробуй позже."
 
 # --- ОБРАБОТЧИКИ TELEGRAM ---
 @bot.message_handler(commands=['start'])
