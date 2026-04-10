@@ -3,6 +3,8 @@ import os
 import random
 import requests
 import threading
+import re
+import xml.etree.ElementTree as ET
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -66,11 +68,36 @@ def get_weather(city):
                     f"💨 Ветер: {d['wind']['speed']} м/с\n"
                     f"☁️ {d['weather'][0]['description'].capitalize()}")
         elif res.status_code == 404:
-            return f"🌍 Город '{city}' не найден. Попробуй написать на английском (например, Moscow)."
+            return f"🌍 Город '{city}' не найден. Попробуй написать на английском."
         else:
             return f"❌ Ошибка сервера погоды: {res.status_code}"
+    except Exception:
+        return "😅 Не удалось загрузить погоду. Попробуй позже."
+
+def get_top_news():
+    """Парсит топ-3 новости из RSS-ленты Ленты.ру"""
+    rss_url = "https://lenta.ru/rss/news/main/"
+    try:
+        res = requests.get(rss_url, timeout=10)
+        res.raise_for_status()
+        
+        root = ET.fromstring(res.content)
+        items = root.findall('.//item')[:3]  # Берём первые 3 новости
+        
+        news_list = []
+        for i, item in enumerate(items, 1):
+            title = item.find('title').text or "Без заголовка"
+            link = item.find('link').text
+            desc = item.find('description').text or ""
+            
+            # Убираем HTML-теги из описания
+            clean_desc = re.sub(r'<[^>]+>', '', desc).strip()[:150] + "..."
+            
+            news_list.append(f"{i}. 📰 {title}\n   {clean_desc}\n   🔗 {link}")
+            
+        return "📡 **ТОП-3 НОВОСТИ:**\n\n" + "\n\n".join(news_list)
     except Exception as e:
-        return f"😅 Не удалось загрузить погоду. Попробуй позже."
+        return f"😅 Не удалось загрузить новости. Попробуй позже.\n(Тех. причина: {str(e)[:40]})"
 
 # --- ОБРАБОТЧИКИ TELEGRAM ---
 @bot.message_handler(commands=['start'])
@@ -81,9 +108,11 @@ def send_welcome(message):
     btn_meme = telebot.types.InlineKeyboardButton("🖼 Мем", callback_data="send_meme")
     btn_gif = telebot.types.InlineKeyboardButton("🎬 Гифка", callback_data="send_gif")
     btn_fact = telebot.types.InlineKeyboardButton("🧠 Факт", callback_data="send_fact")
+    btn_news = telebot.types.InlineKeyboardButton("📰 Новости", callback_data="get_news")
     btn_weather = telebot.types.InlineKeyboardButton("🌤 Погода", callback_data="ask_weather")
-    markup.add(btn_dice, btn_quote, btn_meme, btn_gif, btn_fact, btn_weather)
-    bot.reply_to(message, "👋 Привет! Я русскоязычный вайб-бот. Выбери действие или введи `/weather Город`:", reply_markup=markup)
+    markup.add(btn_dice, btn_quote, btn_meme, btn_gif, btn_fact, btn_news, btn_weather)
+    
+    bot.reply_to(message, "👋 Привет! Я русскоязычный вайб-бот. Выбери действие или используй `/weather Город` / `/news`:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
@@ -109,24 +138,30 @@ def handle_callback(call):
     elif call.data == "send_fact":
         bot.answer_callback_query(call.id, text="🧠 Загружаю факт...")
         bot.send_message(call.message.chat.id, random.choice(RUSSIAN_FACTS))
+    elif call.data == "get_news":
+        bot.answer_callback_query(call.id, text="📡 Загружаю новости...")
+        bot.send_message(call.message.chat.id, get_top_news(), parse_mode="Markdown")
     elif call.data == "ask_weather":
         bot.answer_callback_query(call.id, text="🌤 Введи город текстом!")
-        bot.send_message(call.message.chat.id, "💬 Просто напиши мне название города, например: `Москва` или `Лондон`. Я покажу погоду!")
+        bot.send_message(call.message.chat.id, "💬 Просто напиши мне название города, например: `Москва` или `Лондон`.")
 
 @bot.message_handler(commands=['weather'])
 def cmd_weather(message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        bot.reply_to(message, "🌤 Введи город после команды.\nПример: `/weather Москва` или `/weather London`")
+        bot.reply_to(message, "🌤 Введи город после команды.\nПример: `/weather Москва`")
         return
     city = parts[1].strip()
     bot.reply_to(message, f"🔍 Ищу погоду для {city}...")
-    result = get_weather(city)
-    bot.send_message(message.chat.id, result)
+    bot.send_message(message.chat.id, get_weather(city))
+
+@bot.message_handler(commands=['news'])
+def cmd_news(message):
+    bot.reply_to(message, "📡 Загружаю свежие новости...")
+    bot.send_message(message.chat.id, get_top_news(), parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
-    # Простой эхо-режим для текста
     bot.reply_to(message, f"🔁 Ты написал: {message.text}")
 
 # --- АНТИ-СОН ДЛЯ RENDER ---
