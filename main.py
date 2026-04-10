@@ -3,34 +3,34 @@ import os
 import random
 import requests
 import threading
+import time
 import re
-import xml.etree.ElementTree as ET
+import schedule
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 TOKEN = os.getenv("BOT_TOKEN")
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+BROADCAST_TIME = os.getenv("BROADCAST_TIME", "09:00")  # Формат HH:MM, время UTC
+DEFAULT_CITY = os.getenv("DEFAULT_CITY", "Москва")
 
 if not TOKEN:
-    print("❌ ОШИБКА: Переменная BOT_TOKEN не найдена. Проверь Render Environment.")
+    print("❌ ОШИБКА: Переменная BOT_TOKEN не найдена.")
     exit(1)
 
 bot = telebot.TeleBot(TOKEN)
+active_users = set()  # Хранит ID пользователей, взаимодействовавших с ботом
 
 # --- КОНТЕНТ ---
 QUOTES = [
     "💡 «Главное — не переставать задавать вопросы.» — Эйнштейн",
     "🚀 «Успех — это способность идти от неудачи к неудаче, не теряя энтузиазма.» — Черчилль",
-    "🌟 «Не бойся двигаться медленно, бойся стоять на месте.» — Китайская мудрость",
-    "🔥 «Код — это поэзия для машин.» — Неизвестный разработчик",
-    "🛠 «Любая достаточно развитая технология неотличима от магии.» — Артур Кларк"
+    "🌟 «Не бойся двигаться медленно, бойся стоять на месте.» — Китайская мудрость"
 ]
 
 RUSSIAN_FACTS = [
     "🇷🇺 Россия — самая большая страна в мире, её площадь составляет 17,1 млн км².",
     "🏔️ В России находится самое глубокое озеро в мире — Байкал (1642 метра).",
-    "🚀 Россия первой отправила человека в космос — Юрия Гагарина 12 апреля 1961 года.",
-    "👩🚀 Первая в мире женщина-космонавт — Валентина Терешкова (СССР, 1963).",
-    "🎭 В России более 600 театров — больше, чем в любой другой стране."
+    "🚀 Россия первой отправила человека в космос — Юрия Гагарина 12 апреля 1961 года."
 ]
 
 # --- ФУНКЦИИ КОНТЕНТА ---
@@ -56,63 +56,42 @@ def get_random_gif():
 
 def get_weather(city):
     if not WEATHER_API_KEY:
-        return "⚠️ Ключ погоды не настроен. Попроси админа добавить WEATHER_API_KEY."
-    
+        return "⚠️ Ключ погоды не настроен."
     url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
     try:
         res = requests.get(url, timeout=7)
         if res.status_code == 200:
             d = res.json()
-            return (f"🌤 Погода в {d['name']}, {d['sys']['country']}\n"
-                    f"🌡 Температура: {d['main']['temp']}°C (ощущается как {d['main']['feels_like']}°C)\n"
-                    f"💨 Ветер: {d['wind']['speed']} м/с\n"
-                    f"☁️ {d['weather'][0]['description'].capitalize()}")
+            return f"🌡 {d['main']['temp']}°C (ощущается {d['main']['feels_like']}°C)\n💨 Ветер: {d['wind']['speed']} м/с\n☁️ {d['weather'][0]['description'].capitalize()}"
         elif res.status_code == 404:
-            return f"🌍 Город '{city}' не найден. Попробуй написать на английском."
-        else:
-            return f"❌ Ошибка сервера погоды: {res.status_code}"
-    except Exception:
-        return "😅 Не удалось загрузить погоду. Попробуй позже."
+            return f"🌍 Город '{city}' не найден."
+    except: pass
+    return "😅 Не удалось загрузить погоду."
 
 def get_top_news():
-    """Надёжный парсер через JSON-конвертер RSS (обходит блокировки и проблемы с XML)"""
-    rss_urls = [
-        "https://lenta.ru/rss/news/main/",
-        "https://ria.ru/export/rss2/index.xml"
-    ]
+    rss_urls = ["https://lenta.ru/rss/news/main/", "https://ria.ru/export/rss2/index.xml"]
     for rss_url in rss_urls:
         try:
-            # Конвертируем RSS в JSON через бесплатный сервис
             api_url = f"https://api.rss2json.com/v1/api.json?rss_url={rss_url}"
             res = requests.get(api_url, timeout=10)
             res.raise_for_status()
             data = res.json()
-            
-            if data.get("status") != "ok" or not data.get("items"):
-                continue  # Пробуем следующую ленту
-            
+            if data.get("status") != "ok" or not data.get("items"): continue
             items = data["items"][:3]
             news_list = []
             for i, item in enumerate(items, 1):
                 title = item.get("title", "Без заголовка").strip()
                 link = item.get("link", "#")
-                desc = item.get("description") or item.get("content") or ""
-                clean_desc = re.sub(r'<[^>]+>', '', desc).strip()[:130]
-                if len(desc) > 130: clean_desc += "..."
-                
-                news_list.append(f"{i}. 📰 {title}\n   {clean_desc}\n   🔗 {link}")
-            
+                desc = re.sub(r'<[^>]+>', '', (item.get("description") or "")).strip()[:120] + "..."
+                news_list.append(f"{i}. 📰 {title}\n   {desc}\n   🔗 {link}")
             return "📡 ТОП-3 НОВОСТИ:\n\n" + "\n\n".join(news_list)
-        except Exception as e:
-            # Логируем ошибку в Render для отладки
-            print(f"[NEWS DEBUG] Ошибка ленты {rss_url}: {type(e).__name__} - {e}")
-            continue
-            
-    return "😅 Не удалось загрузить новости. Попробуй позже."
+        except: continue
+    return "😅 Новости временно недоступны."
 
-# --- ОБРАБОТЧИКИ TELEGRAM ---
+# --- ОБРАБОТЧИКИ ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    active_users.add(message.chat.id)
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
     btn_dice = telebot.types.InlineKeyboardButton("🎲 Кубик", callback_data="roll_dice")
     btn_quote = telebot.types.InlineKeyboardButton("💬 Цитата", callback_data="get_quote")
@@ -122,11 +101,11 @@ def send_welcome(message):
     btn_news = telebot.types.InlineKeyboardButton("📰 Новости", callback_data="get_news")
     btn_weather = telebot.types.InlineKeyboardButton("🌤 Погода", callback_data="ask_weather")
     markup.add(btn_dice, btn_quote, btn_meme, btn_gif, btn_fact, btn_news, btn_weather)
-    
-    bot.reply_to(message, "👋 Привет! Я русскоязычный вайб-бот. Выбери действие или используй `/weather Город` / `/news`:", reply_markup=markup)
+    bot.reply_to(message, f"👋 Привет! Я вайб-бот. Рассылка каждый день в {BROADCAST_TIME} UTC.\nВыбери действие или введи `/weather Город` / `/news` / `/broadcast_now`:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
+    active_users.add(call.from_user.id)
     if call.data == "roll_dice":
         res = random.randint(1, 6)
         bot.answer_callback_query(call.id, text=f"🎲 Выпало: {res}")
@@ -154,28 +133,65 @@ def handle_callback(call):
         bot.send_message(call.message.chat.id, get_top_news())
     elif call.data == "ask_weather":
         bot.answer_callback_query(call.id, text="🌤 Введи город текстом!")
-        bot.send_message(call.message.chat.id, "💬 Просто напиши мне название города, например: `Москва` или `Лондон`.")
+        bot.send_message(call.message.chat.id, "💬 Напиши название города, например: `Москва`")
 
 @bot.message_handler(commands=['weather'])
 def cmd_weather(message):
+    active_users.add(message.chat.id)
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        bot.reply_to(message, "🌤 Введи город после команды.\nПример: `/weather Москва`")
+        bot.reply_to(message, "🌤 Пример: `/weather Москва`")
         return
-    city = parts[1].strip()
-    bot.reply_to(message, f"🔍 Ищу погоду для {city}...")
-    bot.send_message(message.chat.id, get_weather(city))
+    bot.reply_to(message, f"🔍 Ищу погоду для {parts[1].strip()}...")
+    bot.send_message(message.chat.id, get_weather(parts[1].strip()))
 
 @bot.message_handler(commands=['news'])
 def cmd_news(message):
+    active_users.add(message.chat.id)
     bot.reply_to(message, "📡 Загружаю свежие новости...")
     bot.send_message(message.chat.id, get_top_news())
 
+@bot.message_handler(commands=['broadcast_now'])
+def cmd_broadcast_now(message):
+    active_users.add(message.chat.id)
+    bot.reply_to(message, "📡 Запуск тестовой рассылки...")
+    job_daily_broadcast()
+    bot.send_message(message.chat.id, "✅ Рассылка отправлена активным пользователям.")
+
 @bot.message_handler(func=lambda message: True)
 def echo_all(message):
+    active_users.add(message.chat.id)
     bot.reply_to(message, f"🔁 Ты написал: {message.text}")
 
-# --- АНТИ-СОН ДЛЯ RENDER ---
+# --- РАССЫЛКА ПО РАСПИСАНИЮ ---
+def job_daily_broadcast():
+    if not active_users:
+        print("📡 Нет активных пользователей для рассылки")
+        return
+    print(f"📡 Запуск ежедневной рассылки для {len(active_users)} пользователей...")
+    
+    weather = get_weather(DEFAULT_CITY)
+    news_raw = get_top_news()
+    # Берём только первую новость для краткости
+    first_news = news_raw.split("\n\n")[0] if "\n\n" in news_raw else "Новости недоступны."
+    
+    msg = (
+        f"🌅 ДОБРОЕ УТРО!\n\n"
+        f"📰 Главная новость:\n{first_news}\n\n"
+        f"🌤 Погода в {DEFAULT_CITY}:\n{weather}\n\n"
+        f"🤖 Ваш вайб-бот"
+    )
+    
+    for uid in list(active_users):
+        try:
+            bot.send_message(uid, msg)
+            time.sleep(0.5)  # Защита от rate-limit Telegram
+        except Exception as e:
+            print(f"⚠️ Ошибка отправки {uid}: {e}")
+            active_users.discard(uid)  # Удаляем заблокированных/удалённых юзеров
+    print("✅ Рассылка завершена")
+
+# --- СЕРВЕР + ПЛАНИРОВЩИК ---
 PORT = int(os.environ.get("PORT", 8080))
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
@@ -194,7 +210,15 @@ def run_server():
     except Exception as e:
         print(f"❌ Сервер не запустился: {e}")
 
+def run_scheduler():
+    schedule.every().day.at(BROADCAST_TIME).do(job_daily_broadcast)
+    print(f"⏰ Планировщик запущен. Рассылка каждый день в {BROADCAST_TIME} UTC")
+    while True:
+        schedule.run_pending()
+        time.sleep(10)
+
 if __name__ == "__main__":
     threading.Thread(target=run_server, daemon=True).start()
+    threading.Thread(target=run_scheduler, daemon=True).start()
     print("✅ Бот запущен. Ожидание сообщений...")
     bot.polling(none_stop=True)
