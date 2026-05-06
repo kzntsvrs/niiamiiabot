@@ -8,7 +8,21 @@ from datetime import datetime, timedelta
 from telebot.types import BotCommand
 from io import BytesIO
 import threading
+import sys
+import fcntl
+import os
 
+# Защита от множественного запуска
+def lock_instance():
+    try:
+        with open('/tmp/bot.lock', 'w') as f:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            print("✅ Блокировка получена, бот запущен")
+    except:
+        print("❌ Бот уже запущен! Выход...")
+        sys.exit(0)
+
+lock_instance()
 # ========== FLASK ДЛЯ RENDER (ОБЯЗАТЕЛЬНО) ==========
 try:
     from flask import Flask
