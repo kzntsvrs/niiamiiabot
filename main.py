@@ -174,25 +174,85 @@ import random
 import requests
 import os
 
-# ========== НАСТРОЙКА VK ==========
-VK_TOKEN = os.getenv("VK_TOKEN")  # Сервисный ключ
+VK_TOKEN = os.getenv("VK_TOKEN")
 
 def get_random_meme_from_vk():
-    """Простая рабочая версия без VK"""
-    import random
+    """
+    Получает случайный мем из русскоязычных VK-пабликов
+    """
+    if not VK_TOKEN:
+        print("⚠️ VK_TOKEN не настроен")
+        return get_random_meme_fallback()
     
-    # Список гарантированно работающих мемов
-    memes = [
+    try:
+        # Авторизация через токен
+        vk_session = vk_api.VkApi(token=VK_TOKEN)
+        vk = vk_session.get_api()
+        
+        # ID популярных русскоязычных пабликов с мемами
+        meme_groups = [
+            -54530371,   # "РИА Новости" (не мемы, для примера)
+            -192029818,  # "Мемы | Memes"
+            -165019463,  # "Мемы и гифки"
+            -177165877,  # "Лучшие мемы"
+            -158452046,  # "Мемология"
+            -188365659,  # "Топ мемов"
+        ]
+        
+        # Выбираем случайный паблик
+        group_id = random.choice(meme_groups)
+        print(f"📢 Берём мемы из паблика: {group_id}")
+        
+        # Получаем посты со стены
+        wall_posts = vk.wall.get(
+            owner_id=group_id,
+            count=50,           # Проверяем последние 50 постов
+            filter='owner',     # Только записи от имени паблика
+            extended=0
+        )
+        
+        # Собираем все картинки из постов
+        memes = []
+        for post in wall_posts['items']:
+            if 'attachments' in post:
+                for attachment in post['attachments']:
+                    if attachment['type'] == 'photo':
+                        # Берём фото в максимальном разрешении
+                        sizes = attachment['photo']['sizes']
+                        max_size = max(sizes, key=lambda x: x['width'] * x['height'])
+                        
+                        # Берём текст поста как подпись (обрезаем до 200 символов)
+                        caption = post.get('text', '')[:200]
+                        if caption:
+                            caption = caption.replace('\n', ' ').strip()
+                        else:
+                            caption = "🎭 Мем из VK"
+                        
+                        memes.append({
+                            'url': max_size['url'],
+                            'caption': caption
+                        })
+        
+        if memes:
+            meme = random.choice(memes)
+            print(f"✅ Мем найден: {meme['url'][:50]}...")
+            return meme['url'], meme['caption']
+        else:
+            print("⚠️ Мемы не найдены, использую резерв")
+            return get_random_meme_fallback()
+            
+    except Exception as e:
+        print(f"❌ Ошибка VK API: {e}")
+        return get_random_meme_fallback()
+
+def get_random_meme_fallback():
+    """Резервный источник на случай ошибки VK"""
+    fallback_memes = [
         ("https://i.imgflip.com/1bij.jpg", "🤣 Это хорошо?"),
         ("https://i.imgflip.com/26am.jpg", "😄 Всегда было"),
-        ("https://i.imgflip.com/22bd.jpg", "🎭 Мем"),
-        ("https://http.cat/200.jpg", "🐱 Успех (HTTP 200)"),
-        ("https://http.cat/418.jpg", "🫖 Я чайник"),
+        ("https://i.imgflip.com/22bd.jpg", "🎭 Мем (VK временно недоступен)"),
     ]
-    
-    meme = random.choice(memes)
-    print(f"🖼 Выбран мем: {meme[0][:50]}...")
-    return meme
+    return random.choice(fallback_memes)
 
 def get_vibe_photo():
     try:
