@@ -137,12 +137,27 @@ def update_stat(user_id, stat_name, increment=1):
 
 def get_random_meme():
     try:
-        r = requests.get("https://meme-api.com/gimme", timeout=5)
+        # Пытаемся получить мем с русскоязычного источника (imgflip — популярные мемы с текстом)
+        r = requests.get("https://api.imgflip.com/get_memes", timeout=10)
         if r.status_code == 200:
-            return r.json().get("url"), r.json().get("title", "Мем")
+            data = r.json()
+            if data.get("success"):
+                memes = data["data"]["memes"]
+                import random
+                meme = random.choice(memes)
+                # imgflip отдаёт URL картинки и название мема
+                return meme["url"], f"📸 {meme['name']}"
     except:
         pass
-    return "https://http.cat/418.jpg", "Я чайник"
+    
+    # Резервный вариант — картинки-заглушки на случай ошибки
+    fallback_memes = [
+        "https://i.imgflip.com/1bij.jpg",   # "Это хорошо?"
+        "https://i.imgflip.com/26am.jpg",   # "Всегда было"
+        "https://i.imgflip.com/22bd.jpg",   # "Здесь могла быть ваша реклама"
+        "https://i.imgflip.com/1otk96.jpg", # "Change my mind"
+    ]
+    return random.choice(fallback_memes), "🎭 Мем дня"
 
 def get_vibe_photo():
     try:
