@@ -11,7 +11,27 @@ import threading
 import sys
 import fcntl
 import os
+# ПРИНУДИТЕЛЬНАЯ ОСТАНОВКА СТАРЫХ ПРОЦЕССОВ
+import sys
+import os
 
+# Убиваем все старые процессы с этим токеном
+try:
+    # Проверяем, нет ли уже запущенного экземпляра
+    with open('/tmp/bot.pid', 'r') as f:
+        old_pid = int(f.read().strip())
+        try:
+            os.kill(old_pid, 9)
+            print(f"✅ Убит старый процесс {old_pid}")
+        except:
+            pass
+except:
+    pass
+
+# Записываем свой PID
+with open('/tmp/bot.pid', 'w') as f:
+    f.write(str(os.getpid()))
+print(f"📝 Запущен процесс {os.getpid()}")
 # Защита от множественного запуска
 def lock_instance():
     try:
