@@ -17,7 +17,6 @@ import os
 
 # ДИАГНОСТИКА
 print("🚀 BOT STARTING...")
-print(f"Bot token starting with: {TOKEN[:10]}...")
 
 @bot.message_handler(commands=['ping'])
 def ping(message):
@@ -194,7 +193,7 @@ def get_random_meme_from_vk():
     url = random.choice(memes)
     print(f"🎁 Отправляю мем: {url}")
     return url, "🐱 Тестовый мем"
-    
+
 def get_vibe_photo():
     try:
         response = requests.get("https://picsum.photos/800/600", timeout=10)
