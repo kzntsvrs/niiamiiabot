@@ -15,6 +15,21 @@ import os
 import sys
 import os
 
+# ДИАГНОСТИКА
+print("🚀 BOT STARTING...")
+print(f"Bot token starting with: {TOKEN[:10]}...")
+
+@bot.message_handler(commands=['ping'])
+def ping(message):
+    print("🏓 PING command received!")
+    bot.reply_to(message, "🏓 PONG!")
+
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    print(f"📨 Получено сообщение: {message.text}")
+    if message.text.startswith('/'):
+        print(f"⚠️ Команда {message.text} не сработала!")
+
 # Убиваем все старые процессы с этим токеном
 try:
     # Проверяем, нет ли уже запущенного экземпляра
@@ -169,74 +184,17 @@ def update_stat(user_id, stat_name, increment=1):
 
 # ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 def get_random_meme_from_vk():
-    import random, requests, os
-    
-    VK_TOKEN = os.getenv("VK_TOKEN")
-    
-    if not VK_TOKEN:
-        print("❌ Нет токена VK")
-        return get_meme_fallback()
-    
-    # Паблики с мемами (ID сообществ)
-    groups = [
-        "-177165877",  # Лучшие мемы
-        "-192029818",  # Мемы | Memes  
-        "-165019463",  # Мемы и гифки
-    ]
-    
-    group_id = random.choice(groups)
-    
-    # Прямой запрос к VK API через requests
-    url = "https://api.vk.com/method/wall.get"
-    params = {
-        "owner_id": group_id,
-        "count": "30",
-        "filter": "owner",
-        "access_token": VK_TOKEN,
-        "v": "5.131"
-    }
-    
-    try:
-        resp = requests.get(url, params=params, timeout=10)
-        data = resp.json()
-        
-        if "error" in data:
-            print(f"VK ошибка: {data['error']}")
-            return get_meme_fallback()
-        
-        # Собираем все фото
-        photos = []
-        for post in data["response"]["items"]:
-            if "attachments" in post:
-                for att in post["attachments"]:
-                    if att["type"] == "photo":
-                        # Берём последний (самый большой) размер
-                        sizes = att["photo"]["sizes"]
-                        if sizes:
-                            max_photo = sizes[-1]  # последний обычно самый большой
-                            photos.append(max_photo["url"])
-        
-        if photos:
-            meme_url = random.choice(photos)
-            print(f"✅ Мем найден, размеров: {len(photos)}")
-            return meme_url, "🔥 Мем из VK"
-        else:
-            print("⚠️ Фото не найдены")
-            return get_meme_fallback()
-            
-    except Exception as e:
-        print(f"Ошибка: {e}")
-        return get_meme_fallback()
-
-def get_meme_fallback():
     import random
+    # Простые рабочие картинки
     memes = [
-        ("https://i.imgflip.com/1bij.jpg", "🎭 Запасной мем 1"),
-        ("https://i.imgflip.com/26am.jpg", "🎭 Запасной мем 2"),
-        ("https://i.imgflip.com/22bd.jpg", "🎭 Запасной мем 3"),
+        "https://http.cat/200.jpg",
+        "https://http.cat/201.jpg", 
+        "https://http.cat/202.jpg",
     ]
-    return random.choice(memes)
-
+    url = random.choice(memes)
+    print(f"🎁 Отправляю мем: {url}")
+    return url, "🐱 Тестовый мем"
+    
 def get_vibe_photo():
     try:
         response = requests.get("https://picsum.photos/800/600", timeout=10)
