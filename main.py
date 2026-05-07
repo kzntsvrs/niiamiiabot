@@ -170,18 +170,14 @@ def get_random_meme_from_vk():
         print("⚠️ VK_TOKEN не настроен")
         return get_meme_fallback()
     
-    # ID русскоязычных пабликов с мемами (обновлённые, гарантированно работающие)
     meme_groups = [
         "-177165877",  # Лучшие мемы
         "-192029818",  # Мемы | Memes
         "-165019463",  # Мемы и гифки
-        "-188365659",  # Топ мемов
-        "-158452046",  # Мемология
     ]
     
     group_id = random.choice(meme_groups)
     
-    # Прямой запрос к VK API
     url = "https://api.vk.com/method/wall.get"
     params = {
         "owner_id": group_id,
@@ -199,7 +195,6 @@ def get_random_meme_from_vk():
             print(f"❌ Ошибка VK API: {data['error']}")
             return get_meme_fallback()
         
-        # Собираем все фото из постов
         photos = []
         for post in data.get("response", {}).get("items", []):
             if "attachments" in post:
@@ -207,7 +202,6 @@ def get_random_meme_from_vk():
                     if attachment.get("type") == "photo":
                         sizes = attachment["photo"].get("sizes", [])
                         if sizes:
-                            # Берём последний (самый большой) размер
                             max_photo = sizes[-1]
                             photos.append(max_photo["url"])
         
@@ -424,11 +418,6 @@ def meme(message):
     except Exception as e:
         print(f"❌ Ошибка в команде meme: {e}")
         bot.reply_to(message, f"❌ Ошибка: {str(e)[:100]}")
-
-@bot.message_handler(commands=['ping'])
-def ping(message):
-    print("🏓 PING command received!")
-    bot.reply_to(message, "🏓 PONG!")
 
 @bot.message_handler(commands=['vibe_photo'])
 def vibe_photo(message):
