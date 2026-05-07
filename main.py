@@ -168,31 +168,74 @@ def update_stat(user_id, stat_name, increment=1):
     conn.close()
 
 # ========== ОСНОВНЫЕ ФУНКЦИИ ==========
-
-import random
-
 def get_random_meme_from_vk():
-    """Отдаёт случайную картинку из встроенной коллекции."""
-    print("🎁 Используется резервная коллекция мемов.")
-
-    # --- ВАША НОВАЯ КОЛЛЕКЦИЯ МЕМОВ ---
-    # Добавьте сюда прямые ссылки на картинки с нормальными мемами.
-    meme_links = [
-        "https://i.imgflip.com/1bij.jpg",   # Это хорошо?
-        "https://i.imgflip.com/26am.jpg",   # Всегда было
-        "https://i.imgflip.com/22bd.jpg",   # Здесь могла быть ваша реклама
-        "https://i.imgflip.com/1otk96.jpg", # Change my mind
-        # Сюда вы можете добавить ещё 20-30 ссылок.
-        # Просто вставляйте новые строки с ссылками на картинки через запятую.
+    import random, requests, os
+    
+    VK_TOKEN = os.getenv("VK_TOKEN")
+    
+    if not VK_TOKEN:
+        print("❌ Нет токена VK")
+        return get_meme_fallback()
+    
+    # Паблики с мемами (ID сообществ)
+    groups = [
+        "-177165877",  # Лучшие мемы
+        "-192029818",  # Мемы | Memes  
+        "-165019463",  # Мемы и гифки
     ]
-    # ---------------------------------
+    
+    group_id = random.choice(groups)
+    
+    # Прямой запрос к VK API через requests
+    url = "https://api.vk.com/method/wall.get"
+    params = {
+        "owner_id": group_id,
+        "count": "30",
+        "filter": "owner",
+        "access_token": VK_TOKEN,
+        "v": "5.131"
+    }
+    
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        data = resp.json()
+        
+        if "error" in data:
+            print(f"VK ошибка: {data['error']}")
+            return get_meme_fallback()
+        
+        # Собираем все фото
+        photos = []
+        for post in data["response"]["items"]:
+            if "attachments" in post:
+                for att in post["attachments"]:
+                    if att["type"] == "photo":
+                        # Берём последний (самый большой) размер
+                        sizes = att["photo"]["sizes"]
+                        if sizes:
+                            max_photo = sizes[-1]  # последний обычно самый большой
+                            photos.append(max_photo["url"])
+        
+        if photos:
+            meme_url = random.choice(photos)
+            print(f"✅ Мем найден, размеров: {len(photos)}")
+            return meme_url, "🔥 Мем из VK"
+        else:
+            print("⚠️ Фото не найдены")
+            return get_meme_fallback()
+            
+    except Exception as e:
+        print(f"Ошибка: {e}")
+        return get_meme_fallback()
 
-    if not meme_links:
-        return "https://http.cat/418.jpg", "🫖 А где мемы? Добавь картинки!"
-
-    # Выбираем случайную ссылку из списка
-    chosen_meme_url = random.choice(meme_links)
-    return chosen_meme_url, "🎭 Вот тебе мем!"
+def get_meme_fallback():
+    import random
+    memes = [
+        ("https://i.imgflip.com/1bij.jpg", "🎭 Запасной мем 1"),
+        ("https://i.imgflip.com/26am.jpg", "🎭 Запасной мем 2"),
+        ("https://i.imgflip.com/22bd.jpg", "🎭 Запасной мем 3"),
+    ]
+    return random.choice(memes)
 
 def get_vibe_photo():
     try:
