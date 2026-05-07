@@ -169,67 +169,30 @@ def update_stat(user_id, stat_name, increment=1):
 
 # ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 
-import vk_api
 import random
-import requests
-import os
-
-VK_TOKEN = os.getenv("VK_TOKEN")
 
 def get_random_meme_from_vk():
-    import random
-    import requests
-    import os
-    
-    VK_TOKEN = os.getenv("VK_TOKEN")
-    
-    if not VK_TOKEN:
-        return "https://http.cat/200.jpg", "🐱 Токен VK не найден"
-    
-    try:
-        # Паблики с мемами (русскоязычные)
-        groups = [
-            "-177165877",  # Лучшие мемы
-            "-192029818",  # Мемы
-            "-165019463",  # Мемы и гифки
-        ]
-        
-        group_id = random.choice(groups)
-        
-        url = "https://api.vk.com/method/wall.get"
-        params = {
-            "owner_id": group_id,
-            "count": "30",
-            "filter": "owner",
-            "access_token": VK_TOKEN,
-            "v": "5.131"
-        }
-        
-        response = requests.get(url, params=params, timeout=10)
-        data = response.json()
-        
-        # Собираем все фото
-        photos = []
-        if "response" in data:
-            for post in data["response"]["items"]:
-                if "attachments" in post:
-                    for att in post["attachments"]:
-                        if att["type"] == "photo":
-                            sizes = att["photo"]["sizes"]
-                            if sizes:
-                                # Берём самое большое фото
-                                max_photo = max(sizes, key=lambda x: x["width"] * x["height"])
-                                photos.append(max_photo["url"])
-        
-        if photos:
-            meme_url = random.choice(photos)
-            return meme_url, "🔥 Русский мем из VK"
-        else:
-            return "https://i.imgflip.com/1bij.jpg", "🎭 Мем временно недоступен"
-            
-    except Exception as e:
-        print(f"VK ошибка: {e}")
-        return "https://i.imgflip.com/1bij.jpg", "🎭 Мем из резерва"
+    """Отдаёт случайную картинку из встроенной коллекции."""
+    print("🎁 Используется резервная коллекция мемов.")
+
+    # --- ВАША НОВАЯ КОЛЛЕКЦИЯ МЕМОВ ---
+    # Добавьте сюда прямые ссылки на картинки с нормальными мемами.
+    meme_links = [
+        "https://i.imgflip.com/1bij.jpg",   # Это хорошо?
+        "https://i.imgflip.com/26am.jpg",   # Всегда было
+        "https://i.imgflip.com/22bd.jpg",   # Здесь могла быть ваша реклама
+        "https://i.imgflip.com/1otk96.jpg", # Change my mind
+        # Сюда вы можете добавить ещё 20-30 ссылок.
+        # Просто вставляйте новые строки с ссылками на картинки через запятую.
+    ]
+    # ---------------------------------
+
+    if not meme_links:
+        return "https://http.cat/418.jpg", "🫖 А где мемы? Добавь картинки!"
+
+    # Выбираем случайную ссылку из списка
+    chosen_meme_url = random.choice(meme_links)
+    return chosen_meme_url, "🎭 Вот тебе мем!"
 
 def get_vibe_photo():
     try:
