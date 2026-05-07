@@ -10,28 +10,12 @@ from io import BytesIO
 import threading
 import sys
 import fcntl
-import os
-# ПРИНУДИТЕЛЬНАЯ ОСТАНОВКА СТАРЫХ ПРОЦЕССОВ
-import sys
-import os
 
-# ДИАГНОСТИКА
+# ========== ДИАГНОСТИКА ==========
 print("🚀 BOT STARTING...")
 
-@bot.message_handler(commands=['ping'])
-def ping(message):
-    print("🏓 PING command received!")
-    bot.reply_to(message, "🏓 PONG!")
-
-@bot.message_handler(func=lambda message: True)
-def echo_all(message):
-    print(f"📨 Получено сообщение: {message.text}")
-    if message.text.startswith('/'):
-        print(f"⚠️ Команда {message.text} не сработала!")
-
-# Убиваем все старые процессы с этим токеном
+# ========== ПРИНУДИТЕЛЬНАЯ ОСТАНОВКА СТАРЫХ ПРОЦЕССОВ ==========
 try:
-    # Проверяем, нет ли уже запущенного экземпляра
     with open('/tmp/bot.pid', 'r') as f:
         old_pid = int(f.read().strip())
         try:
@@ -42,11 +26,10 @@ try:
 except:
     pass
 
-# Записываем свой PID
 with open('/tmp/bot.pid', 'w') as f:
     f.write(str(os.getpid()))
 print(f"📝 Запущен процесс {os.getpid()}")
-# Защита от множественного запуска
+
 def lock_instance():
     try:
         with open('/tmp/bot.lock', 'w') as f:
@@ -57,7 +40,8 @@ def lock_instance():
         sys.exit(0)
 
 lock_instance()
-# ========== FLASK ДЛЯ RENDER (ОБЯЗАТЕЛЬНО) ==========
+
+# ========== FLASK ДЛЯ RENDER ==========
 try:
     from flask import Flask
     from threading import Thread
@@ -73,7 +57,6 @@ try:
         port = int(os.environ.get("PORT", 8080))
         web_app.run(host='0.0.0.0', port=port, debug=False)
     
-    # Запускаем Flask в отдельном потоке
     Thread(target=run_web_server, daemon=True).start()
     print("✅ Flask сервер запущен на порту", os.environ.get("PORT", 8080))
 except ImportError:
@@ -90,13 +73,12 @@ if not TOKEN:
 bot = telebot.TeleBot(TOKEN)
 
 # ========== SQLite БАЗА ДАННЫХ ==========
-DB_PATH = "/tmp/vibe_bot.db"  # Render использует /tmp для временных файлов
+DB_PATH = "/tmp/vibe_bot.db"
 
 def init_database():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Пользователи
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -106,7 +88,6 @@ def init_database():
         )
     ''')
     
-    # Статистика
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS stats (
             user_id INTEGER PRIMARY KEY,
@@ -114,7 +95,6 @@ def init_database():
         )
     ''')
     
-    # Списки покупок
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS shopping_lists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,7 +104,6 @@ def init_database():
         )
     ''')
     
-    # Товары в списках
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS shopping_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,7 +114,6 @@ def init_database():
         )
     ''')
     
-    # Заметки
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,18 +159,82 @@ def update_stat(user_id, stat_name, increment=1):
     conn.commit()
     conn.close()
 
-# ========== ОСНОВНЫЕ ФУНКЦИИ ==========
+# ========== ФУНКЦИЯ ПОЛУЧЕНИЯ МЕМОВ ИЗ VK ==========
 def get_random_meme_from_vk():
-    import random
-    # Простые рабочие картинки
-    memes = [
-        "https://http.cat/200.jpg",
-        "https://http.cat/201.jpg", 
-        "https://http.cat/202.jpg",
+    """
+    Получает случайный мем из русскоязычных VK-пабликов
+    """
+    VK_TOKEN = os.getenv("VK_TOKEN")
+    
+    if not VK_TOKEN:
+        print("⚠️ VK_TOKEN не настроен")
+        return get_meme_fallback()
+    
+    # ID русскоязычных пабликов с мемами (обновлённые, гарантированно работающие)
+    meme_groups = [
+        "-177165877",  # Лучшие мемы
+        "-192029818",  # Мемы | Memes
+        "-165019463",  # Мемы и гифки
+        "-188365659",  # Топ мемов
+        "-158452046",  # Мемология
     ]
-    url = random.choice(memes)
-    print(f"🎁 Отправляю мем: {url}")
-    return url, "🐱 Тестовый мем"
+    
+    group_id = random.choice(meme_groups)
+    
+    # Прямой запрос к VK API
+    url = "https://api.vk.com/method/wall.get"
+    params = {
+        "owner_id": group_id,
+        "count": "30",
+        "filter": "owner",
+        "access_token": VK_TOKEN,
+        "v": "5.131"
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+        
+        if "error" in data:
+            print(f"❌ Ошибка VK API: {data['error']}")
+            return get_meme_fallback()
+        
+        # Собираем все фото из постов
+        photos = []
+        for post in data.get("response", {}).get("items", []):
+            if "attachments" in post:
+                for attachment in post["attachments"]:
+                    if attachment.get("type") == "photo":
+                        sizes = attachment["photo"].get("sizes", [])
+                        if sizes:
+                            # Берём последний (самый большой) размер
+                            max_photo = sizes[-1]
+                            photos.append(max_photo["url"])
+        
+        if photos:
+            meme_url = random.choice(photos)
+            print(f"✅ Мем найден, всего фото: {len(photos)}")
+            return meme_url, "🔥 Мем из VK"
+        else:
+            print("⚠️ Фото не найдены в постах")
+            return get_meme_fallback()
+            
+    except Exception as e:
+        print(f"❌ Ошибка при запросе к VK: {e}")
+        return get_meme_fallback()
+
+def get_meme_fallback():
+    """Резервный источник мемов (если VK недоступен)"""
+    import random
+    fallback_memes = [
+        "https://i.imgflip.com/1bij.jpg",
+        "https://i.imgflip.com/26am.jpg",
+        "https://i.imgflip.com/22bd.jpg",
+        "https://i.imgflip.com/1otk96.jpg",
+    ]
+    url = random.choice(fallback_memes)
+    print(f"🎁 Использую резервный мем: {url}")
+    return url, "🎭 Мем (резерв)"
 
 def get_vibe_photo():
     try:
@@ -204,7 +246,6 @@ def get_vibe_photo():
     return None, None
 
 def get_top_news():
-    # Упрощённая версия без RSS, чтобы не падало
     quotes = [
         "✨ Хорошие новости: сегодня ты молодец!",
         "💫 Лучшая новость: ты существуешь и это прекрасно!",
@@ -213,9 +254,9 @@ def get_top_news():
     return f"📡 **НОВОСТИ ДНЯ:**\n\n{random.choice(quotes)}"
 
 def get_weather(city):
-    WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "570b5fda9c1c64963ec8e36a2795e2d1")
+    WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "")
     if not WEATHER_API_KEY:
-        return "⚠️ Ключ погоды не настроен. Добавьте переменную WEATHER_API_KEY в Render"
+        return "⚠️ Ключ погоды не настроен"
     try:
         url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
         r = requests.get(url, timeout=7)
@@ -232,7 +273,6 @@ def get_weather(city):
     return f"😅 Не удалось загрузить погоду для {city}"
 
 # ========== ЗАМЕТКИ ==========
-
 def create_note(user_id, title, content, category="Общее"):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -275,7 +315,6 @@ def delete_note(note_id, user_id):
     conn.close()
 
 # ========== СПИСКИ ПОКУПОК ==========
-
 def create_shopping_list(user_id, name):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -349,7 +388,6 @@ def setup_bot_commands():
         print(f"⚠️ Ошибка установки команд: {e}")
 
 # ========== ОСНОВНЫЕ КОМАНДЫ ==========
-
 @bot.message_handler(commands=['start'])
 def start(message):
     user = message.from_user
@@ -372,23 +410,25 @@ def start(message):
 
 @bot.message_handler(commands=['meme'])
 def meme(message):
-    print(f"🔥 Команда /meme получена от {message.from_user.id}")  # Отладка
+    print(f"🔥 Команда /meme получена от {message.from_user.id}")
     
     try:
-        # Сначала отправим сообщение, что команда получена
         bot.reply_to(message, "🖼 Запрос получен, ищу мем...")
         
-        # Получаем мем
         url, title = get_random_meme_from_vk()
         print(f"📸 Мем найден: {url[:50]}...")
         
-        # Отправляем фото
         bot.send_photo(message.chat.id, url, caption=title)
         print(f"✅ Мем отправлен пользователю {message.from_user.id}")
         
     except Exception as e:
         print(f"❌ Ошибка в команде meme: {e}")
         bot.reply_to(message, f"❌ Ошибка: {str(e)[:100]}")
+
+@bot.message_handler(commands=['ping'])
+def ping(message):
+    print("🏓 PING command received!")
+    bot.reply_to(message, "🏓 PONG!")
 
 @bot.message_handler(commands=['vibe_photo'])
 def vibe_photo(message):
@@ -438,7 +478,6 @@ def help_cmd(message):
     bot.reply_to(message, help_text, parse_mode='Markdown')
 
 # ========== ЗАМЕТКИ - КОМАНДЫ ==========
-
 @bot.message_handler(commands=['note'])
 def create_note_command(message):
     text = message.text.replace('/note', '').strip()
@@ -494,7 +533,6 @@ def search_notes_command(message):
     bot.reply_to(message, text, parse_mode='Markdown')
 
 # ========== СПИСКИ ПОКУПОК - КОМАНДЫ ==========
-
 user_temp_list = {}
 
 @bot.message_handler(commands=['shopping'])
@@ -594,7 +632,6 @@ def create_list_step(message):
     shopping_lists(message)
 
 # ========== ПРОСТЫЕ ТЕКСТОВЫЕ ОТВЕТЫ ==========
-
 @bot.message_handler(func=lambda message: True)
 def simple_reply(message):
     user = message.from_user
@@ -634,7 +671,6 @@ if __name__ == "__main__":
     init_database()
     setup_bot_commands()
     
-    # Удаляем вебхук (важно для polling режима)
     try:
         bot.remove_webhook()
         print("✅ Webhook удалён")
@@ -643,7 +679,6 @@ if __name__ == "__main__":
     
     print("✅ Бот готов! Напишите /start в Telegram")
     
-    # Бесконечный цикл с переподключением для Render
     while True:
         try:
             bot.polling(none_stop=True, interval=3, timeout=60)
